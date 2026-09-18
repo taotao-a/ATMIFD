@@ -1,0 +1,8 @@
+# Historical CUDA 11.3 variant; requires a compatible NVIDIA driver.
+--extra-index-url https://download.pytorch.org/whl/cu113
+--find-links https://data.pyg.org/whl/torch-1.12.0+cu113.html
+--only-binary=torch-scatter,torch-sparse
+-r requirements.txt
+torch==1.12.0+cu113
+torch-scatter==2.1.0+pt112cu113
+torch-sparse==0.6.16+pt112cu113
