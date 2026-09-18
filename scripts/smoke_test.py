@@ -41,7 +41,7 @@ def main():
         with (data / 'trace_path.pkl').open('wb') as handle:
             pickle.dump(graph, handle)
         rng = np.random.RandomState(42)
-        for i in range(10):
+        for i in range(30):
             labels = np.zeros(5, dtype=int)
             labels[0] = i % 2
             masked = labels.copy()

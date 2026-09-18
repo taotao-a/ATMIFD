@@ -79,18 +79,38 @@ def validate_data_paths(args):
         raise FileNotFoundError('Missing MSDS inputs: {}. Supply prepared data with --data_path; labels must be provided separately.'.format(', '.join(missing)))
 
 
+def split_window_ranges(n_windows, window):
+    """Return non-overlapping window-index ranges for a 60/10/30 raw-time split.
+
+    Window i covers raw positions [i, i + window). Splitting the already-built
+    windows without this gap would share window - 1 observations at each boundary.
+    """
+    n_raw = n_windows + window - 1
+    train_raw_end = int(n_raw * 0.6)
+    val_raw_end = train_raw_end + int(n_raw * 0.1)
+    return {
+        'train': (0, max(0, train_raw_end - window + 1)),
+        'val': (train_raw_end, max(train_raw_end, val_raw_end - window + 1)),
+        'test': (val_raw_end, n_windows),
+    }
+
+
 def build_loaders(processed, args):
     from torch.utils.data import DataLoader
 
     n_total = len(processed.dataset)
-    n_train, n_val = int(n_total * 0.6), int(n_total * 0.1)
-    if not n_val or n_total - n_train - n_val <= 0:
-        raise ValueError('At least 10 windows are needed for the train/validation/test split')
+    ranges = split_window_ranges(n_total, args['window'])
+    train_start, train_end = ranges['train']
+    val_start, val_end = ranges['val']
+    test_start, test_end = ranges['test']
+    if train_end <= train_start or val_end <= val_start or test_end <= test_start:
+        raise ValueError('Dataset is too short for non-overlapping train/validation/test windows')
+    n_train = train_end - train_start
     if not args['evaluate'] and n_train < args['batch_size']:
         raise ValueError('Training split is smaller than batch_size; reduce --batch_size')
-    train_set = processed.dataset[:n_train]
-    val_set = processed.dataset[n_train:n_train + n_val]
-    test_set = processed.dataset[n_train + n_val:]
+    train_set = processed.dataset[train_start:train_end]
+    val_set = processed.dataset[val_start:val_end]
+    test_set = processed.dataset[test_start:test_end]
     train_dl = DataLoader(train_set, batch_size=args['batch_size'], shuffle=True,
                           pin_memory=False, drop_last=True)
     val_dl = DataLoader(val_set, batch_size=args['batch_size'], shuffle=False,

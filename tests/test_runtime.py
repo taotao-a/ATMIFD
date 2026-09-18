@@ -10,7 +10,8 @@ import tempfile
 import unittest
 
 from util.parser_MSDS import parse_args, validate_args
-from util.runtime import CACHE_KEYS, PROJECT_ROOT, prepare_args, project_path
+from util.runtime import (CACHE_KEYS, PROJECT_ROOT, prepare_args, project_path,
+                          split_window_ranges)
 
 
 class RuntimeTests(unittest.TestCase):
@@ -48,6 +49,15 @@ class RuntimeTests(unittest.TestCase):
 
     def test_short_loss_run_is_allowed(self):
         validate_args(parse_args(['--epochs', '1', '--eval_stage', 'loss']))
+
+    def test_window_splits_do_not_share_raw_observations(self):
+        window = 10
+        ranges = split_window_ranges(n_windows=100, window=window)
+        train_last = ranges['train'][1] - 1
+        val_first, val_last = ranges['val'][0], ranges['val'][1] - 1
+        test_first = ranges['test'][0]
+        self.assertLess(train_last + window - 1, val_first)
+        self.assertLess(val_last + window - 1, test_first)
 
     def test_paths_are_project_relative(self):
         self.assertEqual(Path(project_path('data/MSDS-pre')), PROJECT_ROOT / 'data/MSDS-pre')
