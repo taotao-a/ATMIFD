@@ -269,7 +269,7 @@ class MY(Base):
     # --------------------------
     # Training
     # --------------------------
-    def fit(self, train_loader, test_loader, **args):
+    def fit(self, train_loader, val_loader, **args):
         if len(train_loader) == 0:
             raise ValueError('Training loader has no full batches; reduce batch_size')
         optimizer = AdaBelief(self.model.parameters(), lr=self.learning_rate, weight_decay=self.weight_decay)
@@ -368,10 +368,10 @@ class MY(Base):
                 .format(epoch, self.epoches, epoch_loss_v, epoch_cls_loss_v, epoch_rec_loss_v, epoch_time_elapsed, best["loss"]['score'], worse_count)
             )
 
-            # keep original behavior (select best-f1 checkpoint by training-set f1)
+            # Select checkpoints on validation data; the test split is evaluated
+            # only after training and threshold selection in main.py.
             if epoch > self.rec_down:
-                result = self.evaluate(train_loader)
-                self.evaluate(test_loader)
+                result = self.evaluate(val_loader)
                 if float(result['f1']) >= best["f1"]["score"]:
                     best["f1"]["score"] = float(result['f1'])
                     best["f1"]["state"] = copy.deepcopy(self.model.state_dict())

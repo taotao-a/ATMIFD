@@ -79,7 +79,7 @@ or preprocessing settings; select a new cache path when those settings change.
 An existing empty cache folder is an error, not a request to overwrite it.
 
 The chronological split is 60% training, 10% validation and 30% testing.
-Training drops incomplete batches. F1 checkpoint selection uses training-set F1
+Training drops incomplete batches. F1 checkpoint selection uses validation-set F1
 and starts after `rec_down`; a default F1 run therefore needs at least 3 epochs.
 For a shorter runtime check, use `--epochs 1 --eval_stage loss`.
 

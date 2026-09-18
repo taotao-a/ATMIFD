@@ -29,7 +29,7 @@ def main(argv=None):
                  sample['data_node'].shape, sample['data_edge'].shape, sample['data_log'].shape)
     trainer = train.MY(MyModel(processed.graph, **args), **args)
     if not args['evaluate']:
-        trainer.fit(train_loader=train_dl, test_loader=test_dl)
+        trainer.fit(train_loader=train_dl, val_loader=val_dl)
 
     stages = ['loss', 'f1'] if args['eval_stage'] == 'both' else [args['eval_stage']]
     with open(os.path.join(args['result_dir'], 'evaluation.log'), 'a', encoding='utf-8') as handle:

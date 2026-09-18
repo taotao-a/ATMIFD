@@ -73,9 +73,8 @@ def calc_index(predict, actual, threshold: float = None):
         y_true = act_np.reshape(-1)
 
     # y_pred + scores
-    score0 = score1 = None
+    score1 = None
     if pred_np.ndim == 2 and pred_np.shape[-1] == 2:
-        score0 = pred_np[:, 0]
         score1 = pred_np[:, 1]
         if threshold is None:
             y_pred = np.argmax(pred_np, axis=-1)
@@ -97,24 +96,19 @@ def calc_index(predict, actual, threshold: float = None):
     pr1, rc1, f11 = pr_rc_f1_for(1)
     pr0, rc0, f10 = pr_rc_f1_for(0)
 
+    # Anomaly is always class 1. Do not switch to the majority/normal class:
+    # average precision is class-dependent even when binary AUCs are equal.
     auc = ap = 0.0
-    if score0 is not None:
+    if score1 is not None:
+        anomaly_target = (y_true == 1).astype(int)
         try:
-            auc1 = roc_auc_score((y_true == 1).astype(int), score1)
-            ap1  = average_precision_score((y_true == 1).astype(int), score1)
+            auc = float(roc_auc_score(anomaly_target, score1))
         except Exception:
-            auc1, ap1 = 0.0, 0.0
-
+            auc = 0.0
         try:
-            auc0 = roc_auc_score((y_true == 0).astype(int), score0)
-            ap0  = average_precision_score((y_true == 0).astype(int), score0)
+            ap = float(average_precision_score(anomaly_target, score1))
         except Exception:
-            auc0, ap0 = 0.0, 0.0
-
-        if auc1 >= auc0:
-            auc, ap = float(auc1), float(ap1)
-        else:
-            auc, ap = float(auc0), float(ap0)
+            ap = 0.0
 
     total = len(y_true)
     pred_wrong = int((y_pred != y_true).sum())
