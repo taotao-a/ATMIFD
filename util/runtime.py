@@ -7,6 +7,7 @@ import sys
 from util.parser_MSDS import validate_args
 
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
+PIPELINE_VERSION = 2
 CACHE_KEYS = ('window', 'step', 'num_nodes', 'metric_len', 'trace_node_dim',
               'raw_edge', 'log_len', 'label_percent')
 
@@ -44,7 +45,7 @@ def prepare_args(args, argv=None, threshold_only=False):
     if threshold_only and args['eval_stage'] == 'both':
         raise ValueError('Threshold-only mode requires --eval_stage f1 or loss')
     if args['dataset_path'] is None:
-        args['dataset_path'] = './data/MSDS-save-' + ('fusion' if args['trace_node_dim'] else 'metric')
+        args['dataset_path'] = './data/MSDS-save-v2-' + ('fusion' if args['trace_node_dim'] else 'metric')
     for key in ('data_path', 'dataset_path', 'result_dir'):
         args[key] = project_path(args[key])
     if args['model_path']:
@@ -66,12 +67,15 @@ def validate_data_paths(args):
         if not cache.is_dir() or not any(p.stem.isdigit() for p in cache.glob('*.pkl')):
             raise ValueError('Dataset cache is empty or invalid: {}. Use a new cache directory to rebuild it.'.format(cache))
         manifest = cache / 'cache_config.json'
-        if manifest.is_file():
-            with manifest.open(encoding='utf-8') as handle:
-                saved = json.load(handle)
-            mismatches = [key for key in CACHE_KEYS if saved.get(key) != args[key]]
-            if mismatches:
-                raise ValueError('Cache configuration mismatch ({}). Select a separate --dataset_path.'.format(', '.join(mismatches)))
+        if not manifest.is_file():
+            raise ValueError('Legacy cache has no corrected-pipeline metadata: {}. Select a new --dataset_path to rebuild it.'.format(cache))
+        with manifest.open(encoding='utf-8') as handle:
+            saved = json.load(handle)
+        if saved.get('pipeline_version') != PIPELINE_VERSION:
+            raise ValueError('Cache pipeline version is not {}: {}. Select a new --dataset_path.'.format(PIPELINE_VERSION, cache))
+        mismatches = [key for key in CACHE_KEYS if saved.get(key) != args[key]]
+        if mismatches:
+            raise ValueError('Cache configuration mismatch ({}). Select a separate --dataset_path.'.format(', '.join(mismatches)))
     else:
         required.extend(['label.pkl', 'metric.csv', 'trace.csv'])
     missing = [str(data / name) for name in required if not (data / name).is_file()]
@@ -95,6 +99,61 @@ def split_window_ranges(n_windows, window):
     }
 
 
+def _unique_timeline(records, key):
+    """Reconstruct a step-1 timeline from consecutive overlapping windows."""
+    import numpy as np
+
+    first = np.asarray(records[0][key])
+    if len(records) == 1:
+        return first.copy()
+    tails = np.stack([np.asarray(record[key])[-1] for record in records[1:]], axis=0)
+    return np.concatenate([first, tails], axis=0)
+
+
+def _fit_normalization(train_records, args):
+    import numpy as np
+
+    metric = _unique_timeline(train_records, 'data_node')[..., :args['metric_len']]
+    trace = _unique_timeline(train_records, 'data_edge')
+    return {
+        'normalization_version': 1,
+        'metric_min': metric.min(axis=0).tolist(),
+        'metric_max': metric.max(axis=0).tolist(),
+        'trace_mean': trace.mean(axis=0).tolist(),
+    }
+
+
+def _apply_normalization(dataset, args, stats):
+    import numpy as np
+
+    if stats.get('normalization_version') != 1:
+        raise ValueError('Unsupported normalization metadata version')
+    metric_min = np.asarray(stats['metric_min'], dtype=np.float32)
+    metric_max = np.asarray(stats['metric_max'], dtype=np.float32)
+    trace_mean = np.asarray(stats['trace_mean'], dtype=np.float32)
+    expected_metric = (args['num_nodes'], args['metric_len'])
+    expected_trace = (args['num_nodes'], args['num_nodes'], args['raw_edge'])
+    if metric_min.shape != expected_metric or metric_max.shape != expected_metric:
+        raise ValueError('Saved metric normalization shape does not match this model')
+    if trace_mean.shape != expected_trace:
+        raise ValueError('Saved trace normalization shape does not match this model')
+
+    metric_scale = metric_max - metric_min
+    for record in dataset:
+        metric = np.asarray(record['data_node'][..., :args['metric_len']], dtype=np.float32)
+        metric = np.divide(metric - metric_min, metric_scale,
+                           out=np.zeros_like(metric), where=metric_scale > 1e-8)
+        edge = np.asarray(record['data_edge'], dtype=np.float32)
+        edge = edge / (trace_mean * 10.0 + 1e-6)
+        record['data_edge'] = edge
+        if args['trace_node_dim'] == 6:
+            from util.features import trace_node_features
+            node = np.concatenate([metric, trace_node_features(edge)], axis=-1)
+        else:
+            node = metric
+        record['data_node'] = node.astype(np.float32, copy=False)
+
+
 def build_loaders(processed, args):
     from torch.utils.data import DataLoader
 
@@ -108,6 +167,16 @@ def build_loaders(processed, args):
     n_train = train_end - train_start
     if not args['evaluate'] and n_train < args['batch_size']:
         raise ValueError('Training split is smaller than batch_size; reduce --batch_size')
+    if args['evaluate']:
+        normalization_path = Path(args['model_path']) / 'normalization.json'
+        if not normalization_path.is_file():
+            raise FileNotFoundError('Missing corrected normalization metadata: {}'.format(normalization_path))
+        with normalization_path.open(encoding='utf-8') as handle:
+            normalization = json.load(handle)
+    else:
+        normalization = _fit_normalization(processed.dataset[train_start:train_end], args)
+    _apply_normalization(processed.dataset, args, normalization)
+    processed.normalization_stats = normalization
     train_set = processed.dataset[train_start:train_end]
     val_set = processed.dataset[val_start:val_end]
     test_set = processed.dataset[test_start:test_end]

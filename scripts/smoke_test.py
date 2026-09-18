@@ -23,7 +23,7 @@ def main():
     from main import main as run_experiment
     from thr_only import main as run_threshold
     from util.parser_MSDS import parse_args, validate_args
-    from util.runtime import build_loaders, prepare_args
+    from util.runtime import CACHE_KEYS, PIPELINE_VERSION, build_loaders, prepare_args
     from util.data_MSDS import Process
     from util.train import MY
     from src.model import MyModel
@@ -60,6 +60,11 @@ def main():
                   '--result_dir', str(root / 'runs'), '--device', options.device,
                   '--window', '3', '--num_layer', '1', '--batch_size', '2',
                   '--epochs', '3', '--thr_steps', '5']
+        cache_args = parse_args(common)
+        validate_args(cache_args)
+        cache_config = {key: cache_args[key] for key in CACHE_KEYS}
+        cache_config['pipeline_version'] = PIPELINE_VERSION
+        (cache / 'cache_config.json').write_text(json.dumps(cache_config), encoding='utf-8')
         for imbalance in ('false', 'true'):
             run_experiment(common + ['--imb_loss', imbalance])
         runs = sorted((root / 'runs').glob('*/params.json'))
@@ -67,6 +72,7 @@ def main():
         for params in runs:
             assert (params.parent / 'my_loss_stage.ckpt').is_file()
             assert (params.parent / 'my_f1_stage.ckpt').is_file()
+            assert (params.parent / 'normalization.json').is_file()
             assert (params.parent / 'evaluation.log').is_file()
         model_dir = str(runs[-1].parent)
         evaluate = ['--evaluate', 'true', '--model_path', model_dir,
@@ -74,7 +80,7 @@ def main():
         run_experiment(evaluate)
         f1_only = root / 'f1-only'
         f1_only.mkdir()
-        for name in ('params.json', 'my_f1_stage.ckpt'):
+        for name in ('params.json', 'normalization.json', 'my_f1_stage.ckpt'):
             shutil.copyfile(Path(model_dir) / name, f1_only / name)
         run_threshold(['--model_path', str(f1_only), '--device', options.device])
 
@@ -101,7 +107,7 @@ def main():
         try:
             Process(**config)
         except ValueError as error:
-            assert 'shape mismatch' in str(error)
+            assert 'Cache configuration mismatch' in str(error)
         else:
             raise AssertionError('Mismatched cache was accepted')
 
@@ -140,7 +146,8 @@ def main():
             assert json.loads(manifest.read_text(encoding='utf-8'))['trace_node_dim'] == dim
         logging.shutdown()
     print('PASS: BCE/CE training, loss/F1 checkpoints, evaluation, threshold search, '
-          'CLI overrides, batch size 1, partial batches, cache checks and CSV-to-cache generation.')
+          'training-only normalization, CLI overrides, batch size 1, partial batches, '
+          'cache checks and CSV-to-cache generation.')
     print('Synthetic runtime test only; no paper metrics are asserted.')
 
 

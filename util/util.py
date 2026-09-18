@@ -138,7 +138,7 @@ def calc_index(predict, actual, threshold: float = None):
     }
 
 def json_pretty_dump(obj, filename):
-    with open(filename, "w") as fw:
+    with open(filename, "w", encoding="utf-8") as fw:
         json.dump(obj, fw, sort_keys=True, indent=4,
                   separators=(",", ": "), ensure_ascii=False, )
 
@@ -163,7 +163,7 @@ def dump_params(args):
 
 def read_params(args):
     filename = os.path.join(args['model_path'], "params.json")
-    with open(filename) as f:
+    with open(filename, encoding="utf-8") as f:
         dict_json = json.load(fp=f)
    
     for handler in logging.root.handlers[:]:

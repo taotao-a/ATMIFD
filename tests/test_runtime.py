@@ -10,8 +10,8 @@ import tempfile
 import unittest
 
 from util.parser_MSDS import parse_args, validate_args
-from util.runtime import (CACHE_KEYS, PROJECT_ROOT, prepare_args, project_path,
-                          split_window_ranges)
+from util.runtime import (CACHE_KEYS, PIPELINE_VERSION, PROJECT_ROOT, prepare_args,
+                          project_path, split_window_ranges)
 
 
 class RuntimeTests(unittest.TestCase):
@@ -81,6 +81,9 @@ class RuntimeTests(unittest.TestCase):
             saved.update(data_path=str(data), dataset_path=str(cache), imb_loss=False,
                          main_model='LegacyRun', gpu=True)
             (model / 'params.json').write_text(json.dumps(saved), encoding='utf-8')
+            manifest = {key: saved[key] for key in CACHE_KEYS}
+            manifest['pipeline_version'] = PIPELINE_VERSION
+            (cache / 'cache_config.json').write_text(json.dumps(manifest), encoding='utf-8')
             options = ['--model_path', str(model), '--device', 'cpu', '--threshold', '0.4',
                        '--thr_search', 'false']
             args = prepare_args(parse_args(options), options, threshold_only=True)
@@ -89,8 +92,6 @@ class RuntimeTests(unittest.TestCase):
             self.assertEqual(args['main_model'], 'LegacyRun')
             self.assertEqual(args['threshold'], 0.4)
             self.assertEqual(args['device'], 'cpu')
-            (cache / 'cache_config.json').write_text(
-                json.dumps({key: args[key] for key in CACHE_KEYS}), encoding='utf-8')
             prepare_args(parse_args(options), options, threshold_only=True)
             with self.assertRaisesRegex(ValueError, 'Cache configuration mismatch'):
                 prepare_args(parse_args(options + ['--label_percent', '0.2']),

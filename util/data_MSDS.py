@@ -6,7 +6,8 @@ import numpy as np
 import pandas as pd
 from tqdm import tqdm
 from util.constant import *
-from util.runtime import CACHE_KEYS, validate_data_paths
+from util.features import trace_node_features
+from util.runtime import CACHE_KEYS, PIPELINE_VERSION, validate_data_paths
 
 # get service dependency
 def read_graph(data_dir):
@@ -22,6 +23,7 @@ class Process:
 
         validate_data_paths(kwargs)
         self.cache_config = {key: kwargs[key] for key in CACHE_KEYS}
+        self.cache_config['pipeline_version'] = PIPELINE_VERSION
         self.expected_shapes = {
             'data_node': (kwargs['window'], kwargs['num_nodes'], kwargs['raw_node']),
             'data_edge': (kwargs['window'], kwargs['num_nodes'], kwargs['num_nodes'], kwargs['raw_edge']),
@@ -118,7 +120,8 @@ class Process:
             if name[0] not in MSDS_pod or name[1] not in MSDS_pod or name[3] > timeend:
                     continue
             trace_a[MSDS_pod.index(name[0]), MSDS_pod.index(name[1]), self.trace_type.index(name[2]), int(name[3]-timestart)] = item['duration'].sum()
-        trace = trace_a.transpose(3, 0, 1, 2) / (trace_a.mean(axis=-1)*10 + 1e-6)
+        # Runtime normalization is fitted on the training split only.
+        trace = trace_a.transpose(3, 0, 1, 2)
 
         self.set['metric'] = metirc
         self.set['log'] = log_record
@@ -208,50 +211,8 @@ class Process:
             assert select_trace.shape == (self.window, len(MSDS_pod), len(MSDS_pod), len(self.trace_type)), f"Worng Trace"
             # ===== Scheme A: trace -> node structural features (6 dims) + normalization =====
             if getattr(self, "trace_node_dim", 0) == 6:
-                # E: (window, N, N) aggregated edge strength (sum over trace types)
-                E = select_trace.sum(axis=-1).astype(np.float32)  # (window, N, N)
-
-                eps = 1e-8
-                N = E.shape[1]  # number of nodes
-
-                # (window, N)
-                out_sum = E.sum(axis=2)  # sum over outgoing edges
-                in_sum = E.sum(axis=1)  # sum over incoming edges
-
-                out_deg = (E > 0).sum(axis=2).astype(np.float32)  # outgoing degree count
-                in_deg = (E > 0).sum(axis=1).astype(np.float32)  # incoming degree count
-
-                out_max = E.max(axis=2)  # max outgoing strength
-                in_max = E.max(axis=1)  # max incoming strength
-
-                out_top1_ratio = out_max / (out_sum + eps)
-                in_top1_ratio = in_max / (in_sum + eps)
-
-                # 1) stabilize scale first (log for sums, normalize degree)
-                out_sum = np.log1p(out_sum)
-                in_sum = np.log1p(in_sum)
-
-                if N > 1:
-                    out_deg = out_deg / (N - 1.0)
-                    in_deg = in_deg / (N - 1.0)
-
-                trace_node_feat = np.stack([
-                    out_sum,
-                    in_sum,
-                    out_deg,
-                    in_deg,
-                    out_top1_ratio,
-                    in_top1_ratio
-                ], axis=-1).astype(np.float32)  # (window, N, 6)
-
-                # 2) z-score normalization per window (over nodes), feature-wise
-                # mean/std: (window, 1, 6)
-                mu = trace_node_feat.mean(axis=1, keepdims=True)
-                sigma = trace_node_feat.std(axis=1, keepdims=True)
-                trace_node_feat = (trace_node_feat - mu) / (sigma + 1e-6)
-
-                # concat to metric node features: (window, N, metric_len + 6)
-                record['data_node'] = np.concatenate([record['data_node'], trace_node_feat], axis=-1)
+                record['data_node'] = np.concatenate(
+                    [record['data_node'], trace_node_features(select_trace)], axis=-1)
 
             record['data_edge'] = select_trace
             record['name'] = f'{num}'

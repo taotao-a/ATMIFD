@@ -147,8 +147,7 @@ def deal_kpi(data_path):
         data = pd.read_csv(os.path.join(data_path, item), sep=',')
         data = data.groupby('now').mean()
         data = data[['cpu.user', 'mem.used', 'load.min1', 'load.min15', 'load.min5']]
-        for name in data.columns.values:
-            data[name] = (data[name] - data[name].min()) / (data[name].max() - data[name].min())
+        # Keep raw metric scales. Training-only statistics are fitted at runtime.
         data = data.fillna(0)
         data.columns = data.columns.map(lambda x: f'{nodename}_'+x)
         result.append(data)

@@ -71,21 +71,24 @@ requires working CUDA; `--device cpu` does not require a GPU. The legacy
 
 Relative paths are resolved against the repository root. Use `--data_path`,
 `--dataset_path`, and `--result_dir` to select other locations. Without an
-explicit cache path, trace feature settings select separate `MSDS-save-metric`
-and `MSDS-save-fusion` directories. New caches contain `cache_config.json`;
+explicit cache path, trace feature settings select separate versioned
+`MSDS-save-v2-metric` and `MSDS-save-v2-fusion` directories. New caches contain
+`cache_config.json`;
 configuration mismatches are rejected instead of silently reusing the cache.
-Legacy caches are shape-checked, but have no metadata to confirm their labeling
-or preprocessing settings; select a new cache path when those settings change.
+Legacy caches are rejected because their full-dataset normalization cannot be
+verified; select a new cache path to rebuild them.
 An existing empty cache folder is an error, not a request to overwrite it.
 
 The chronological split is 60% training, 10% validation and 30% testing on the
 raw-time axis. Windows are formed inside each split, so adjacent splits do not
 share the `window - 1` boundary observations.
+Metric and trace normalization statistics are fitted only on the training split
+and saved in `normalization.json`; evaluation reuses those exact statistics.
 Training drops incomplete batches. F1 checkpoint selection uses validation-set F1
 and starts after `rec_down`; a default F1 run therefore needs at least 3 epochs.
 For a shorter runtime check, use `--epochs 1 --eval_stage loss`.
 
-Each experiment directory contains `params.json`, `running.log`,
+Each experiment directory contains `params.json`, `normalization.json`, `running.log`,
 `my_loss_stage.ckpt`, `my_f1_stage.ckpt` and `evaluation.log` when the corresponding
 training stages succeed. The searched threshold is recorded in `evaluation.log`.
 

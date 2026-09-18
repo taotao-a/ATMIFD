@@ -23,6 +23,8 @@ def main(argv=None):
         args['hash_id'], args['result_dir'] = util.dump_params(args)
         args['model_path'] = args['result_dir']
         util.json_pretty_dump(args, os.path.join(args['result_dir'], 'params.json'))
+        util.json_pretty_dump(processed.normalization_stats,
+                              os.path.join(args['result_dir'], 'normalization.json'))
 
     sample = processed.dataset[0]
     logging.info('[DATA] windows=%s node=%s edge=%s log=%s', len(processed.dataset),
