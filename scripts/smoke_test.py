@@ -145,7 +145,7 @@ def main():
             manifest = Path(raw_config['dataset_path']) / 'cache_config.json'
             assert json.loads(manifest.read_text(encoding='utf-8'))['trace_node_dim'] == dim
         logging.shutdown()
-    print('PASS: BCE/CE training, loss/F1 checkpoints, evaluation, threshold search, '
+    print('PASS: unweighted/weighted CE training, loss/F1 checkpoints, evaluation, threshold search, '
           'training-only normalization, CLI overrides, batch size 1, partial batches, '
           'cache checks and CSV-to-cache generation.')
     print('Synthetic runtime test only; no paper metrics are asserted.')

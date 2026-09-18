@@ -105,7 +105,7 @@ class RuntimeTests(unittest.TestCase):
                                 cwd=str(PROJECT_ROOT.parent), capture_output=True, text=True, encoding='utf-8')
         self.assertEqual(result.returncode, 0, result.stderr)
         self.assertEqual(result.stdout.count('>>>'), 4)
-        for name in ('MetricOnly', 'MetricTraceFusion', 'MetricTraceFusion+ThrSearch', 'ATMIFD'):
+        for name in ('NoTraceNodeFeatures', 'MetricTraceFusion', 'MetricTraceFusion+ThrSearch', 'ATMIFD'):
             self.assertIn('--main_model ' + name, result.stdout)
         self.assertEqual(result.stdout.count('--random_seed 42'), 4)
 

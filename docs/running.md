@@ -121,8 +121,12 @@ python -m unittest discover -s tests -v
 python scripts/smoke_test.py --device cpu
 ```
 
-The ablation launcher runs the four historical switch combinations, gives each
-variant its own experiment name, and separates metric/fusion caches. The smoke
+The ablation launcher runs four controlled configurations, gives each variant
+its own experiment name, and separates node-feature caches. The first variant is
+named `NoTraceNodeFeatures` because it removes the six trace-derived node
+features but retains the inherited trace-edge branch; it is not a trace-free
+model. Weighted and unweighted variants both use cross-entropy so that the loss
+ablation changes only the class weights. The smoke
 test creates temporary synthetic data, checks training, checkpoints, evaluation,
 threshold search and cache generation, then removes its own temporary files.
 These runtime checks do not establish reproduction of the paper's metrics.

@@ -31,8 +31,6 @@ parser.add_argument("--label_weight", default=1e-2, type=float,
                     help='the unkown weight in reconstruction loss')
 parser.add_argument("--label_percent", default=0.5, type=float,
                     help='the proportion of labeled data') 
-parser.add_argument("--abnormal_weight", default=96, type=int,
-                    help='the abnormal weight in classfication loss')
 parser.add_argument("--rec_down", default=1, type=int,
                     help='the number that changes reconstruction loss weight')
 parser.add_argument("--para_low", default=1e-2, type=float,
@@ -113,10 +111,8 @@ parser.add_argument("--thr_steps", default=200, type=int, help="number of grid p
 # ===== Ablation switches =====
 parser.add_argument("--imb_loss", default=True, type=str_bool,
                     help="use imbalance-aware classification loss (CrossEntropy + class weight)")
-parser.add_argument("--imb_alpha", default=0.5, type=float,
-                    help="dampen positive class weight: w1=(neg/pos)^alpha (alpha in (0,1] is gentler)")
 parser.add_argument("--imb_wmax", default=5.0, type=float,
-                    help="clip positive class weight w1 to this maximum")
+                    help="cap anomaly weight w1=min(normal/anomaly, cap)")
 
 # window-level aggregation for anomaly score p(window)
 parser.add_argument("--win_agg", type=str, default="max", choices=["max", "topk", "lse"],
@@ -164,7 +160,7 @@ def validate_args(args):
         raise ValueError('para_low must be in [0,1]; label_weight must be nonnegative')
     if args['learning_rate'] <= 0 or args['weight_decay'] < 0 or args['learning_gamma'] <= 0:
         raise ValueError('learning_rate and learning_gamma must be positive; weight_decay must be nonnegative')
-    if args['abnormal_weight'] <= 0 or not 0 < args['imb_alpha'] <= 1 or args['imb_wmax'] < 1:
+    if args['imb_wmax'] < 1:
         raise ValueError('invalid class-weight parameters')
     if args['thr_steps'] < 2 or not 0 <= args['thr_min'] < args['thr_max'] <= 1:
         raise ValueError('threshold search needs at least 2 points and 0 <= thr_min < thr_max <= 1')

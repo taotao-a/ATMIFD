@@ -11,6 +11,13 @@ from tqdm import tqdm
 import util.util as util
 
 
+def class_weights_from_counts(normal_count, anomaly_count, cap):
+    """Return the paper's cost-sensitive CE weights from labeled train counts."""
+    if normal_count <= 0 or anomaly_count <= 0:
+        return 1.0, 1.0
+    return 1.0, min(float(normal_count) / (float(anomaly_count) + 1e-6), float(cap))
+
+
 class Base(nn.Module):
     def __init__(self, model, **args):
         super(Base, self).__init__()
@@ -35,9 +42,6 @@ class Base(nn.Module):
         self.learning_gamma = args['learning_gamma']
         self.rec_down = args['rec_down']
         self.para_low = args['para_low']
-
-        # Original imbalance weight used by BCE loss (legacy)
-        self.True_list = {'normal': 1, 'abnormal': args['abnormal_weight']}
 
         # Threshold search settings
         self.threshold = args.get('threshold', None)
@@ -234,36 +238,19 @@ class MY(Base):
     # --------------------------
     # Imbalance-aware class weight
     # --------------------------
-    def _infer_class_weight_from_train_loader(self, train_loader, cap: float = 20.0):
+    def _infer_class_weight_from_train_loader(self, train_loader):
         """Compute class weights for CrossEntropyLoss: weight=[w0,w1]."""
-        self.model.eval()
         n0, n1 = 0, 0
+        for record in train_loader.dataset:
+            labels = torch.as_tensor(record['groundtruth_cls'])
+            y = labels.argmax(dim=-1).reshape(-1)
+            n0 += int((y == 0).sum().item())
+            n1 += int((y == 1).sum().item())
 
-        with torch.no_grad():
-            for batch_input in train_loader:
-                batch_input = self.input2device(batch_input, self.use_gpu)
-                _, _, cls_label = self.model(batch_input)
-
-                if cls_label.dim() == 2 and cls_label.size(1) == 2:
-                    y = cls_label.argmax(dim=1).long()
-                else:
-                    y = cls_label.long().view(-1)
-
-                n0 += int((y == 0).sum().item())
-                n1 += int((y == 1).sum().item())
-
-        if n1 == 0:
-            w0, w1 = 1.0, 1.0
-        else:
-            ratio = float(n0) / (float(n1) + 1e-6)
-            alpha = float(self.args.get('imb_alpha', 0.5))
-            wmax = float(self.args.get('imb_wmax', 5.0))
-            w1 = min((ratio ** alpha), wmax)
-            w0 = 1.0
-
-        w1 = min(w1, cap)
+        cap = float(self.args.get('imb_wmax', 5.0))
+        w0, w1 = class_weights_from_counts(n0, n1, cap)
         class_weight = torch.tensor([w0, w1], device=self.device, dtype=torch.float32)
-        logging.info(f"[CLASS WEIGHT] n0={n0} n1={n1} -> weight=[{w0:.3f},{w1:.3f}] (alpha={self.args.get('imb_alpha',0.5)}, wmax={self.args.get('imb_wmax',5.0)})")
+        logging.info(f"[CLASS WEIGHT] n0={n0} n1={n1} -> weight=[{w0:.3f},{w1:.3f}] (cap={cap})")
         return class_weight
 
     # --------------------------
@@ -285,13 +272,12 @@ class MY(Base):
         # classification loss switch
         use_imb = bool(self.args.get('imb_loss', False))
         if use_imb:
-            class_weight = self._infer_class_weight_from_train_loader(train_loader, cap=20.0)
-            losser = torch.nn.CrossEntropyLoss(weight=class_weight)
+            losser = torch.nn.CrossEntropyLoss(
+                weight=self._infer_class_weight_from_train_loader(train_loader))
             logging.info('[CLS LOSS] CrossEntropyLoss (imbalance-aware)')
         else:
-            label_weight = torch.tensor(list(self.True_list.values()), dtype=torch.float32, device=self.device)
-            losser = torch.nn.BCEWithLogitsLoss(reduction='mean', weight=label_weight)
-            logging.info('[CLS LOSS] BCEWithLogitsLoss (legacy)')
+            losser = torch.nn.CrossEntropyLoss()
+            logging.info('[CLS LOSS] CrossEntropyLoss (unweighted ablation)')
 
         logging.info('optimizer : using AdaBelief')
 
@@ -318,12 +304,9 @@ class MY(Base):
                     if cls_result.shape[0] == 0:
                         cls_loss = torch.tensor(0, dtype=torch.float32, device=self.device)
                     else:
-                        if use_imb:
-                            # cls_label: (M,2) one-hot -> (M,) class id
-                            cls_target = cls_label.argmax(dim=1).long() if (cls_label.dim() == 2 and cls_label.size(1) == 2) else cls_label.long()
-                            cls_loss = losser(cls_result, cls_target)
-                        else:
-                            cls_loss = losser(cls_result, cls_label)
+                        # cls_label: (M,2) one-hot -> (M,) class id
+                        cls_target = cls_label.argmax(dim=1).long() if (cls_label.dim() == 2 and cls_label.size(1) == 2) else cls_label.long()
+                        cls_loss = losser(cls_result, cls_target)
 
                     loss = (1 - para) * cls_loss + para * rec_loss
 

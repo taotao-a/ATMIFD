@@ -116,7 +116,7 @@ def _fit_normalization(train_records, args):
     metric = _unique_timeline(train_records, 'data_node')[..., :args['metric_len']]
     trace = _unique_timeline(train_records, 'data_edge')
     return {
-        'normalization_version': 1,
+        'normalization_version': 2,
         'metric_min': metric.min(axis=0).tolist(),
         'metric_max': metric.max(axis=0).tolist(),
         'trace_mean': trace.mean(axis=0).tolist(),
@@ -126,7 +126,7 @@ def _fit_normalization(train_records, args):
 def _apply_normalization(dataset, args, stats):
     import numpy as np
 
-    if stats.get('normalization_version') != 1:
+    if stats.get('normalization_version') != 2:
         raise ValueError('Unsupported normalization metadata version')
     metric_min = np.asarray(stats['metric_min'], dtype=np.float32)
     metric_max = np.asarray(stats['metric_max'], dtype=np.float32)
@@ -144,7 +144,7 @@ def _apply_normalization(dataset, args, stats):
         metric = np.divide(metric - metric_min, metric_scale,
                            out=np.zeros_like(metric), where=metric_scale > 1e-8)
         edge = np.asarray(record['data_edge'], dtype=np.float32)
-        edge = edge / (trace_mean * 10.0 + 1e-6)
+        edge = edge / (trace_mean + 1e-6)
         record['data_edge'] = edge
         if args['trace_node_dim'] == 6:
             from util.features import trace_node_features

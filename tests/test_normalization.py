@@ -43,7 +43,7 @@ class NormalizationTests(unittest.TestCase):
         self.assertLessEqual(normalized[train_end - 1]['data_node'][..., :n_metrics].max(), 1.0)
         val_start = ranges['val'][0]
         self.assertGreater(normalized[val_start]['data_node'][..., :n_metrics].max(), 1.0)
-        np.testing.assert_allclose(normalized[val_start]['data_edge'], 1.0, rtol=1e-5)
+        np.testing.assert_allclose(normalized[val_start]['data_edge'], 10.0, rtol=1e-5)
         self.assertTrue(np.isfinite(normalized[val_start]['data_node']).all())
 
     def test_saved_statistics_are_deterministic(self):

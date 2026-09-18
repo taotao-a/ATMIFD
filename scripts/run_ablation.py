@@ -4,7 +4,7 @@ Usage (from project root):
   python scripts/run_ablation.py --seeds 42
 
 Notes:
-- MetricOnly and MetricTraceFusion require different cached dataset_path folders
+- NoTraceNodeFeatures and MetricTraceFusion require different cached dataset_path folders
   because the node feature dimension differs.
 - This script just launches main.py multiple times.
 """
@@ -23,7 +23,7 @@ def parse_args():
     ap.add_argument("--seeds", default="42", help="comma-separated seeds; paper runs use 42")
     ap.add_argument("--result_dir", default="./result_ablation", help="base result dir")
     ap.add_argument("--data_path", default="./data/MSDS-pre", help="raw MSDS-pre path")
-    ap.add_argument("--ds_metric", default="./data/MSDS-save-v2-metric", help="cache for MetricOnly")
+    ap.add_argument("--ds_metric", default="./data/MSDS-save-v2-metric", help="cache without trace-derived node features")
     ap.add_argument("--ds_fusion", default="./data/MSDS-save-v2-fusion", help="cache for MetricTraceFusion*")
     ap.add_argument("--device", default="auto", choices=["auto", "cpu", "cuda"])
     ap.add_argument("--epochs", default=50, type=int)
@@ -48,7 +48,7 @@ def main():
 
     variants = [
         # name, overrides
-        ("MetricOnly", {
+        ("NoTraceNodeFeatures", {
             "trace_node_dim": "0",
             "dataset_path": a.ds_metric,
             "thr_search": "false",
